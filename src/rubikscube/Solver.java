@@ -41,10 +41,16 @@ public class Solver {
 		}
 	}
 
+	private static boolean isOppositeFace(char f1, char f2) {
+		return (f1 == 'F' && f2 == 'B') || (f1 == 'B' && f2 == 'F') ||
+				(f1 == 'L' && f2 == 'R') || (f1 == 'R' && f2 == 'L') ||
+				(f1 == 'U' && f2 == 'D') || (f1 == 'D' && f2 == 'U');
+	}
+
 	public static void main(String[] args) {
 		long startTime = System.currentTimeMillis();
 		System.out.println("Initializing Pattern Database...");
-		PatternDatabase.initializeCornerPDB();
+		PatternDatabase.initializeBothPDB();
 		System.out.println("Pattern Database initialized");
 		System.out.println("--------------------------------");
 		if (args.length < 2) {
@@ -71,7 +77,14 @@ public class Solver {
 			visited.put(cube.toString(), 0);
 			while (!openSet.isEmpty()) {
 				steps++;
-				if (steps > 30000) {
+				if (openSet.peek().g > 20) {
+					// accroding to the assignment, all cube could be solved in 20 steps | but since
+					// we only allow one direction move , 500 still will be far more than enough
+					System.out.println("g value limit reached");
+					break;
+				}
+				// steps > 30000 true
+				if (steps > 40000) {
 					// accroding to the assignment, all cube could be solved in 20 steps | but since
 					// we only allow one direction move , 500 still will be far more than enough
 					System.out.println("Steps limit reached");
@@ -118,8 +131,38 @@ public class Solver {
 					if (!previousMove.isEmpty() && previousMove != null) {
 						String currentTwoMoves = previousMove + moves[i];
 						// if currentTwoMoves is same letter 4 times, then skip
-						if (currentTwoMoves.equals(String.valueOf(currentTwoMoves.charAt(0)).repeat(4))) {
-							continue;
+						if (currentTwoMoves.length() >= 4) {
+							char firstChar = currentTwoMoves.charAt(0);
+							boolean allSame = true;
+							for (int j = 0; j < 4; j++) {
+								if (currentTwoMoves.charAt(currentTwoMoves.length() - 4 + j) != firstChar) {
+									allSame = false;
+									break;
+								}
+							}
+							if (allSame) {
+								continue;
+							}
+						}
+						// 【剪枝2】避免对面来回操作 (F-B-F, F-BB-F, FF-B-F 等)
+						char currentFace = moves[i].charAt(0);
+						// 从路径末尾往前找第一个不同字母的位置
+						int lastDifferentPos = -1;
+						for (int j = previousMove.length() - 1; j >= 0; j--) {
+							if (previousMove.charAt(j) != previousMove.charAt(previousMove.length() - 1)) {
+								lastDifferentPos = j;
+								break;
+							}
+						}
+						// 如果找到了不同的字母，检查是否是对面
+						if (lastDifferentPos >= 0) {
+							char prevFace = previousMove.charAt(lastDifferentPos);
+							char lastFace = previousMove.charAt(previousMove.length() - 1);
+							// 检查模式: prevFace - lastFace - currentFace
+							// 如果 prevFace 和 currentFace 相同，且 lastFace 是对面，则剪枝
+							if (prevFace == currentFace && isOppositeFace(prevFace, lastFace)) {
+								continue;
+							}
 						}
 					}
 

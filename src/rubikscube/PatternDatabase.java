@@ -1,212 +1,216 @@
 package rubikscube;
 
-import java.util.*;
-import java.io.*;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
 
 public class PatternDatabase {
 
     private static Map<String, Integer> cornerPDB = null;
+    private static Map<String, Integer> edgePDB = null;
 
-    /**
-     * 【主入口】混合启发式：模式识别 + PDB + 传统估计
-     */
+    // 【优化】18种移动（包括90°, 180°, 270°）
+    private static final String[] ALL_MOVES = {
+            "F", "B", "L", "R", "U", "D", // 90度
+            "FF", "BB", "LL", "RR", "UU", "DD", // 180度
+            "FFF", "BBB", "LLL", "RRR", "UUU", "DDD" // 270度
+    };
+
     public static int estimateWithPDB(RubiksCube cube) {
         if (cube.isSolved()) {
             return 0;
         }
 
-        // 【优化1】先检查硬编码的常见模式（最快，0开销）
         int patternEstimate = checkKnownPatterns(cube);
         if (patternEstimate >= 0) {
             return patternEstimate;
         }
 
-        // 【优化2】使用PDB查询（如果已初始化）
-        int cornerEstimate = 0;
-        int edgeEstimate = 0;
+        int cornerEstimate = (cornerPDB != null && cornerPDB.size() > 0)
+                ? lookupCorner(cube)
+                : estimateCorners(cube);
 
-        if (cornerPDB != null && cornerPDB.size() > 0) {
-            cornerEstimate = lookupCorner(cube);
-            edgeEstimate = estimateEdges(cube);
-        } else {
-            // PDB未初始化，用传统方法
-            cornerEstimate = CubeEstimate.estimate(cube) / 3;
-            edgeEstimate = CubeEstimate.estimate(cube) / 2;
-        }
+        int edgeEstimate = (edgePDB != null && edgePDB.size() > 0)
+                ? lookupEdge(cube)
+                : estimateEdges(cube);
 
-        // 取最大值（保证可采纳）
-        return Math.max(cornerEstimate, edgeEstimate);
+        return Math.max(cornerEstimate, edgeEstimate) + (cornerEstimate + edgeEstimate) / 4;
     }
 
     // ========================================
-    // 【优化1】硬编码模式识别
+    // 【核心】精确评估角块
+    // ========================================
+
+    private static int estimateCorners(RubiksCube cube) {
+        String[][] c = cube.cube;
+        int totalSteps = 0;
+
+        CornerDef[] corners = {
+                new CornerDef(new int[][] { { 2, 3 }, { 3, 2 }, { 3, 3 } }, new String[] { "O", "G", "W" }),
+                new CornerDef(new int[][] { { 2, 5 }, { 3, 5 }, { 3, 6 } }, new String[] { "O", "W", "B" }),
+                new CornerDef(new int[][] { { 0, 3 }, { 3, 11 }, { 3, 0 } }, new String[] { "O", "Y", "G" }),
+                new CornerDef(new int[][] { { 0, 5 }, { 3, 8 }, { 3, 9 } }, new String[] { "O", "B", "Y" }),
+                new CornerDef(new int[][] { { 6, 3 }, { 5, 2 }, { 5, 3 } }, new String[] { "R", "G", "W" }),
+                new CornerDef(new int[][] { { 6, 5 }, { 5, 5 }, { 5, 6 } }, new String[] { "R", "W", "B" }),
+                new CornerDef(new int[][] { { 8, 3 }, { 5, 11 }, { 5, 0 } }, new String[] { "R", "Y", "G" }),
+                new CornerDef(new int[][] { { 8, 5 }, { 5, 8 }, { 5, 9 } }, new String[] { "R", "B", "Y" })
+        };
+
+        for (CornerDef corner : corners) {
+            totalSteps += evaluateCorner(c, corner);
+        }
+
+        return totalSteps / 8;
+    }
+
+    private static int evaluateCorner(String[][] c, CornerDef corner) {
+        String c0 = c[corner.pos[0][0]][corner.pos[0][1]];
+        String c1 = c[corner.pos[1][0]][corner.pos[1][1]];
+        String c2 = c[corner.pos[2][0]][corner.pos[2][1]];
+
+        Set<String> currentColors = new HashSet<>(Arrays.asList(c0, c1, c2));
+        Set<String> targetColors = new HashSet<>(Arrays.asList(corner.colors));
+
+        if (!currentColors.equals(targetColors)) {
+            return 5;
+        }
+
+        if (c0.equals(corner.colors[0]) &&
+                c1.equals(corner.colors[1]) &&
+                c2.equals(corner.colors[2])) {
+            return 0;
+        }
+
+        return 3;
+    }
+
+    // ========================================
+    // 【核心】精确评估边块
+    // ========================================
+
+    private static int estimateEdges(RubiksCube cube) {
+        String[][] c = cube.cube;
+        int totalSteps = 0;
+
+        EdgeDef[] edges = {
+                new EdgeDef(new int[][] { { 2, 4 }, { 3, 4 } }, new String[] { "O", "W" }),
+                new EdgeDef(new int[][] { { 1, 5 }, { 3, 7 } }, new String[] { "O", "B" }),
+                new EdgeDef(new int[][] { { 0, 4 }, { 3, 10 } }, new String[] { "O", "Y" }),
+                new EdgeDef(new int[][] { { 1, 3 }, { 3, 1 } }, new String[] { "O", "G" }),
+                new EdgeDef(new int[][] { { 4, 2 }, { 4, 3 } }, new String[] { "G", "W" }),
+                new EdgeDef(new int[][] { { 4, 5 }, { 4, 6 } }, new String[] { "W", "B" }),
+                new EdgeDef(new int[][] { { 4, 11 }, { 4, 0 } }, new String[] { "Y", "G" }),
+                new EdgeDef(new int[][] { { 4, 8 }, { 4, 9 } }, new String[] { "B", "Y" }),
+                new EdgeDef(new int[][] { { 5, 4 }, { 6, 4 } }, new String[] { "W", "R" }),
+                new EdgeDef(new int[][] { { 5, 7 }, { 7, 5 } }, new String[] { "B", "R" }),
+                new EdgeDef(new int[][] { { 5, 10 }, { 8, 4 } }, new String[] { "Y", "R" }),
+                new EdgeDef(new int[][] { { 5, 1 }, { 7, 3 } }, new String[] { "G", "R" })
+        };
+
+        for (EdgeDef edge : edges) {
+            totalSteps += evaluateEdge(c, edge);
+        }
+
+        return totalSteps / 8;
+    }
+
+    private static int evaluateEdge(String[][] c, EdgeDef edge) {
+        String c0 = c[edge.pos[0][0]][edge.pos[0][1]];
+        String c1 = c[edge.pos[1][0]][edge.pos[1][1]];
+
+        Set<String> currentColors = new HashSet<>(Arrays.asList(c0, c1));
+        Set<String> targetColors = new HashSet<>(Arrays.asList(edge.colors));
+
+        if (!currentColors.equals(targetColors)) {
+            return 4;
+        }
+
+        if (c0.equals(edge.colors[0]) && c1.equals(edge.colors[1])) {
+            return 0;
+        }
+
+        return 3;
+    }
+
+    private static class CornerDef {
+        int[][] pos;
+        String[] colors;
+
+        CornerDef(int[][] pos, String[] colors) {
+            this.pos = pos;
+            this.colors = colors;
+        }
+    }
+
+    private static class EdgeDef {
+        int[][] pos;
+        String[] colors;
+
+        EdgeDef(int[][] pos, String[] colors) {
+            this.pos = pos;
+            this.colors = colors;
+        }
+    }
+
+    // ========================================
+    // 【优化】模式识别
     // ========================================
 
     private static int checkKnownPatterns(RubiksCube cube) {
         String[][] c = cube.cube;
 
-        // 模式1：只有上层十字错误
-        if (isOnlyTopCrossWrong(c)) {
-            return 4;
-        }
-
-        // 模式2：只有少量角块错位
-        int wrongCorners = countWrongCorners(c);
-        if (wrongCorners == 1) {
-            return 2;
-        }
-        if (wrongCorners == 2) {
-            return 3;
-        }
-
-        // 模式3：只有少量边块错位
-        int wrongEdges = countWrongEdges(c);
-        if (wrongEdges == 1) {
-            return 1;
-        }
-        if (wrongEdges == 2) {
-            return 2;
-        }
-
-        // 模式4：上层完成，只有下层错误
-        if (isTopLayerSolved(c)) {
-            int bottomErrors = countBottomErrors(c);
-            return Math.max(1, bottomErrors / 3);
-        }
-
-        // 模式5：上层 + 中层完成
-        if (isTopAndMiddleSolved(c)) {
-            int bottomErrors = countBottomErrors(c);
-            return Math.max(1, bottomErrors / 4);
-        }
-
-        return -1;
-    }
-
-    private static boolean isOnlyTopCrossWrong(String[][] c) {
-        int topCrossErrors = 0;
-        if (!c[0][4].equals("O"))
-            topCrossErrors++;
-        if (!c[1][3].equals("O"))
-            topCrossErrors++;
-        if (!c[1][5].equals("O"))
-            topCrossErrors++;
-        if (!c[2][4].equals("O"))
-            topCrossErrors++;
-
-        int otherErrors = 0;
+        int totalWrong = 0;
         for (int i = 0; i < 9; i++) {
             for (int j = 0; j < 12; j++) {
                 if (c[i][j] == null)
                     continue;
                 String target = getTargetColor(i, j);
-                if (target == null)
-                    continue;
-
-                if ((i == 0 && j == 4) || (i == 1 && (j == 3 || j == 5)) || (i == 2 && j == 4)) {
-                    continue;
-                }
-
-                if (!c[i][j].equals(target)) {
-                    otherErrors++;
+                if (target != null && !c[i][j].equals(target)) {
+                    totalWrong++;
                 }
             }
         }
 
-        return topCrossErrors > 0 && otherErrors == 0;
-    }
+        if (totalWrong == 0)
+            return 0;
+        if (totalWrong <= 3)
+            return 1;
+        if (totalWrong <= 6)
+            return 2;
+        if (totalWrong <= 9)
+            return 3;
 
-    private static int countWrongCorners(String[][] c) {
-        int count = 0;
-        int[][] corners = { { 0, 3 }, { 0, 5 }, { 2, 3 }, { 2, 5 }, { 6, 3 }, { 6, 5 }, { 8, 3 }, { 8, 5 } };
-
-        for (int[] corner : corners) {
-            String target = getTargetColor(corner[0], corner[1]);
-            if (target != null && !c[corner[0]][corner[1]].equals(target)) {
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    private static int countWrongEdges(String[][] c) {
-        int count = 0;
-        int[][] edges = {
-                { 0, 4 }, { 1, 3 }, { 1, 5 }, { 2, 4 },
-                { 4, 3 }, { 4, 5 },
-                { 6, 4 }, { 7, 3 }, { 7, 5 }, { 8, 4 }
-        };
-
-        for (int[] edge : edges) {
-            String target = getTargetColor(edge[0], edge[1]);
-            if (target != null && !c[edge[0]][edge[1]].equals(target)) {
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    private static boolean isTopLayerSolved(String[][] c) {
+        boolean topDone = true;
         for (int i = 0; i < 3; i++) {
             for (int j = 3; j < 6; j++) {
                 if (!c[i][j].equals("O")) {
-                    return false;
+                    topDone = false;
+                    break;
                 }
             }
         }
 
-        for (int j = 0; j < 12; j++) {
-            if (j >= 3 && j <= 5)
-                continue;
-            String target = getTargetColor(3, j);
-            if (target != null && c[3][j] != null && !c[3][j].equals(target)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static boolean isTopAndMiddleSolved(String[][] c) {
-        if (!isTopLayerSolved(c))
-            return false;
-
-        int[][] middlePositions = {
-                { 4, 0 }, { 4, 2 }, { 4, 3 }, { 4, 5 }, { 4, 6 }, { 4, 8 }, { 4, 9 }, { 4, 11 }
-        };
-
-        for (int[] pos : middlePositions) {
-            String target = getTargetColor(pos[0], pos[1]);
-            if (target != null && !c[pos[0]][pos[1]].equals(target)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static int countBottomErrors(String[][] c) {
-        int errors = 0;
-        for (int i = 6; i < 9; i++) {
-            for (int j = 3; j < 6; j++) {
-                if (!c[i][j].equals("R")) {
-                    errors++;
+        if (topDone) {
+            int bottomWrong = 0;
+            for (int i = 6; i < 9; i++) {
+                for (int j = 3; j < 6; j++) {
+                    if (!c[i][j].equals("R"))
+                        bottomWrong++;
                 }
             }
+            return Math.max(1, bottomWrong / 3);
         }
 
-        for (int j = 0; j < 12; j++) {
-            if (j >= 3 && j <= 5)
-                continue;
-            String target = getTargetColor(5, j);
-            if (target != null && c[5][j] != null && !c[5][j].equals(target)) {
-                errors++;
-            }
-        }
-
-        return errors;
+        return -1;
     }
 
     private static String getTargetColor(int row, int col) {
@@ -226,135 +230,234 @@ public class PatternDatabase {
     }
 
     // ========================================
-    // 【优化2】边块估计
+    // 【优化】PDB生成 - 带剪枝
     // ========================================
 
-    private static int estimateEdges(RubiksCube cube) {
-        String[][] c = cube.cube;
-        int misplaced = 0;
+    /**
+     * 检查移动是否应该被剪枝
+     */
+    private static boolean shouldPruneMove(String previousPath, String nextMove) {
+        if (previousPath == null || previousPath.isEmpty()) {
+            return false;
+        }
 
-        int[][] edges = {
-                { 0, 4 }, { 1, 3 }, { 1, 5 }, { 2, 4 },
-                { 4, 0 }, { 4, 2 }, { 4, 3 }, { 4, 5 },
-                { 4, 6 }, { 4, 8 }, { 4, 9 }, { 4, 11 },
-                { 6, 4 }, { 7, 3 }, { 7, 5 }, { 8, 4 }
-        };
+        // 获取基本面（去掉重复字母）
+        char nextFace = nextMove.charAt(0);
 
-        for (int[] edge : edges) {
-            String target = getTargetColor(edge[0], edge[1]);
-            if (target != null && !c[edge[0]][edge[1]].equals(target)) {
-                misplaced++;
+        // 检查路径末尾连续相同字母的数量
+        int consecutiveCount = 0;
+        for (int i = previousPath.length() - 1; i >= 0; i--) {
+            if (previousPath.charAt(i) == nextFace) {
+                consecutiveCount++;
+            } else {
+                break;
             }
         }
 
-        return misplaced / 4;
+        // 计算如果添加这个移动会有多少个连续相同字母
+        int nextMoveCount = nextMove.length(); // F=1, FF=2, FFF=3
+        int totalConsecutive = consecutiveCount + nextMoveCount;
+
+        // 如果会产生4个或更多连续相同字母，剪枝
+        if (totalConsecutive >= 4) {
+            return true;
+        }
+
+        // 【额外剪枝】避免对面来回操作 (如 F B F B)
+        if (previousPath.length() >= 2) {
+            char lastFace = previousPath.charAt(previousPath.length() - 1);
+            if (isOppositeFace(lastFace, nextFace)) {
+                // 检查倒数第二个字符
+                for (int i = previousPath.length() - 2; i >= 0; i--) {
+                    if (previousPath.charAt(i) == nextFace) {
+                        return true; // 发现对面来回，剪枝
+                    } else if (previousPath.charAt(i) != lastFace) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
-    // ========================================
-    // 【优化3】PDB相关
-    // ========================================
+    private static boolean isOppositeFace(char f1, char f2) {
+        return (f1 == 'F' && f2 == 'B') || (f1 == 'B' && f2 == 'F') ||
+                (f1 == 'L' && f2 == 'R') || (f1 == 'R' && f2 == 'L') ||
+                (f1 == 'U' && f2 == 'D') || (f1 == 'D' && f2 == 'U');
+    }
 
     public static void initializeCornerPDB() {
         if (cornerPDB != null)
             return;
 
-        System.out.println("Initializing corner PDB...");
-        long startTime = System.currentTimeMillis();
+        System.out.println("Initializing corner PDB with pruning...");
+        long start = System.currentTimeMillis();
 
         cornerPDB = new HashMap<>();
         RubiksCube solved = new RubiksCube();
-        String solvedPattern = extractCornerPattern(solved);
+        String pattern = extractCornerPattern(solved);
 
         Queue<PDBState> queue = new LinkedList<>();
-        queue.add(new PDBState(solved, 0));
-        cornerPDB.put(solvedPattern, 0);
+        queue.add(new PDBState(solved, 0, ""));
+        cornerPDB.put(pattern, 0);
 
-        String[] moves = { "F", "B", "L", "R", "U", "D" };
-        int maxDepth = 6;
+        int maxDepth = 5;
 
         while (!queue.isEmpty()) {
-            PDBState current = queue.poll();
-
-            if (current.depth >= maxDepth)
+            PDBState curr = queue.poll();
+            if (curr.depth >= maxDepth)
                 continue;
 
-            for (String move : moves) {
-                RubiksCube next = current.cube.deepClone();
-                next.applyMoves(move);
-                String pattern = extractCornerPattern(next);
+            // 【优化】使用18种移动 + 剪枝
+            for (String move : ALL_MOVES) {
+                // 剪枝检查
+                if (shouldPruneMove(curr.path, move)) {
+                    continue;
+                }
 
-                if (!cornerPDB.containsKey(pattern)) {
-                    cornerPDB.put(pattern, current.depth + 1);
-                    queue.add(new PDBState(next, current.depth + 1));
+                RubiksCube next = curr.cube.deepClone();
+                next.applyMoves(move);
+                String p = extractCornerPattern(next);
+
+                if (!cornerPDB.containsKey(p)) {
+                    cornerPDB.put(p, curr.depth + 1);
+                    queue.add(new PDBState(next, curr.depth + 1, curr.path + move));
                 }
             }
         }
 
-        long elapsed = System.currentTimeMillis() - startTime;
-        System.out.println("Corner PDB initialized: " + cornerPDB.size() +
-                " patterns in " + (elapsed / 1000.0) + "s");
+        System.out.println("Corner PDB: " + cornerPDB.size() + " patterns in " +
+                (System.currentTimeMillis() - start) / 1000.0 + "s");
+    }
+
+    public static void initializeEdgePDB() {
+        if (edgePDB != null)
+            return;
+
+        System.out.println("Initializing edge PDB with pruning...");
+        long start = System.currentTimeMillis();
+
+        edgePDB = new HashMap<>();
+        RubiksCube solved = new RubiksCube();
+        String pattern = extractEdgePattern(solved);
+
+        Queue<PDBState> queue = new LinkedList<>();
+        queue.add(new PDBState(solved, 0, ""));
+        edgePDB.put(pattern, 0);
+
+        int maxDepth = 5;
+
+        while (!queue.isEmpty()) {
+            PDBState curr = queue.poll();
+            if (curr.depth >= maxDepth)
+                continue;
+
+            // 【优化】使用18种移动 + 剪枝
+            for (String move : ALL_MOVES) {
+                if (shouldPruneMove(curr.path, move)) {
+                    continue;
+                }
+
+                RubiksCube next = curr.cube.deepClone();
+                next.applyMoves(move);
+                String p = extractEdgePattern(next);
+
+                if (!edgePDB.containsKey(p)) {
+                    edgePDB.put(p, curr.depth + 1);
+                    queue.add(new PDBState(next, curr.depth + 1, curr.path + move));
+                }
+            }
+        }
+
+        System.out.println("Edge PDB: " + edgePDB.size() + " patterns in " +
+                (System.currentTimeMillis() - start) / 1000.0 + "s");
+    }
+
+    public static void initializeBothPDB() {
+        initializeCornerPDB();
+        initializeEdgePDB();
     }
 
     public static int lookupCorner(RubiksCube cube) {
         String pattern = extractCornerPattern(cube);
+        return cornerPDB.getOrDefault(pattern, estimateCorners(cube));
+    }
 
-        if (cornerPDB.containsKey(pattern)) {
-            return cornerPDB.get(pattern);
-        } else {
-            return CubeEstimate.estimate(cube) / 2;
-        }
+    public static int lookupEdge(RubiksCube cube) {
+        String pattern = extractEdgePattern(cube);
+        return edgePDB.getOrDefault(pattern, estimateEdges(cube));
     }
 
     private static String extractCornerPattern(RubiksCube cube) {
         String[][] c = cube.cube;
-        StringBuilder pattern = new StringBuilder();
+        StringBuilder sb = new StringBuilder();
 
-        int[][] cornerPositions = {
+        int[][] positions = {
                 { 2, 3 }, { 2, 5 }, { 0, 3 }, { 0, 5 },
                 { 6, 3 }, { 6, 5 }, { 8, 3 }, { 8, 5 }
         };
 
-        for (int[] pos : cornerPositions) {
-            if (c[pos[0]][pos[1]] != null) {
-                pattern.append(c[pos[0]][pos[1]]);
-            }
+        for (int[] pos : positions) {
+            sb.append(c[pos[0]][pos[1]]);
         }
 
-        return pattern.toString();
+        return sb.toString();
     }
 
-    // ========================================
-    // 保存/加载 PDB
-    // ========================================
+    private static String extractEdgePattern(RubiksCube cube) {
+        String[][] c = cube.cube;
+        StringBuilder sb = new StringBuilder();
 
-    public static void savePDB(String filename) throws IOException {
-        if (cornerPDB == null)
-            return;
+        int[][] positions = {
+                { 2, 4 }, { 1, 5 }, { 0, 4 }, { 1, 3 },
+                { 4, 2 }, { 4, 5 }, { 5, 4 }, { 7, 5 }
+        };
 
-        try (ObjectOutputStream oos = new ObjectOutputStream(
-                new FileOutputStream(filename))) {
-            oos.writeObject(cornerPDB);
+        for (int[] pos : positions) {
+            sb.append(c[pos[0]][pos[1]]);
         }
-        System.out.println("PDB saved to " + filename);
+
+        return sb.toString();
+    }
+
+    public static void savePDB(String cornerFile, String edgeFile) throws IOException {
+        if (cornerPDB != null) {
+            try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(cornerFile))) {
+                oos.writeObject(cornerPDB);
+            }
+            System.out.println("Corner PDB saved to " + cornerFile);
+        }
+        if (edgePDB != null) {
+            try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(edgeFile))) {
+                oos.writeObject(edgePDB);
+            }
+            System.out.println("Edge PDB saved to " + edgeFile);
+        }
     }
 
     @SuppressWarnings("unchecked")
-    public static void loadPDB(String filename) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream ois = new ObjectInputStream(
-                new FileInputStream(filename))) {
+    public static void loadPDB(String cornerFile, String edgeFile)
+            throws IOException, ClassNotFoundException {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(cornerFile))) {
             cornerPDB = (Map<String, Integer>) ois.readObject();
+            System.out.println("Corner PDB loaded: " + cornerPDB.size());
         }
-        System.out.println("PDB loaded: " + cornerPDB.size() + " patterns");
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(edgeFile))) {
+            edgePDB = (Map<String, Integer>) ois.readObject();
+            System.out.println("Edge PDB loaded: " + edgePDB.size());
+        }
     }
 
-    // 内部辅助类
     private static class PDBState {
         RubiksCube cube;
         int depth;
+        String path; // 【新增】记录路径用于剪枝
 
-        PDBState(RubiksCube cube, int depth) {
+        PDBState(RubiksCube cube, int depth, String path) {
             this.cube = cube;
             this.depth = depth;
+            this.path = path;
         }
     }
 }
