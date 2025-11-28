@@ -3,294 +3,154 @@ package rubikscube;
 import java.util.Arrays;
 import java.util.HashMap;
 
-// 【推荐】分阶段启发式函数
 public class CubeEstimate {
-    public static String sortString(String string) {
-        char[] charArray = string.toCharArray();
-        Arrays.sort(charArray);
-        String sortedString = new String(charArray);
-        return sortedString;
-    }
 
-    final static String[] conerElementColors = new String[] {
-            "O_G_W",
-            "O_W_B",
-            "G_W_R",
-            "W_B_R",
-            "O_B_Y",
-            "B_Y_R",
-            "O_Y_G",
-            "Y_G_R"
-    };
-    final static String[][] conerElementPositions = new String[][] {
-            { "2_3", "3_2", "3_3", },
-            { "2_5", "3_5", "3_6" },
-            { "5_2", "5_3", "6_3" },
-            { "5_5", "5_6", "6_5" },
-            { "0_5", "3_8", "3_9" },
-            { "5_8", "5_9", "8_5" },
-            { "0_3", "3_11", "3_0" },
-            { "5_11", "5_0", "8_3" }
-    };
-
-    final static String[] edgeElementColors = new String[] {
-            "O_W",
-            "W_R",
-            "G_W",
-            "W_B",
-            "O_B",
-            "B_R",
-            "B_Y",
-            "O_Y",
-            "Y_G",
-            "Y_R",
-            "O_G",
-            "G_R"
-    };
-    final static String[][] edgeElementPositions = new String[][] {
-            { "2_4", "3_4" },
-            { "5_4", "6_4" },
-            { "4_2", "4_3" },
-            { "4_5", "4_6" },
-            { "1_5", "3_7" },
-            { "5_7", "7_5" },
-            { "4_8", "4_9" },
-            { "0_4", "3_10" },
-            { "4_11", "4_0" },
-            { "5_10", "8_4" },
-            { "1_3", "3_1" },
-            { "5_1", "7_3" }
-
-    };
-
+    // 【按老师要求】计算每个块需要多少步归位（位置 + 方向）
     public static int estimate(RubiksCube cube) {
-        // manhattan distance for each element in the cube.
-        // coner elemnt adjust 3 color each of this should be unique so we should be
-        // able to identify
-        // this is a map with conerElementColors as key and the position of the element
-        // as value
-        // orginalposition is position of the element in conerElementPositions each
-        // element has 3 positions
+        if (cube.isSolved()) {
+            return 0;
+        }
 
-        int conerScore = 0;
-        int edgeScore = 0;
-        HashMap<String, String[]> conerElementMap = detectConerElement(cube);
-        // HashMap<String, String[]> edgeElementMap = detectEdgeElement(cube);
-        for (int i = 0; i < conerElementColors.length; i++) {
-            String key = conerElementColors[i];
-            String[] currentPosition = conerElementMap.get(key);
-            String[] orginalPosition = conerElementPositions[i];
-            for (int j = 0; j < currentPosition.length; j++) {
-                conerScore += manhattanDistance(currentPosition[j], orginalPosition[j], "coner");
-            }
-        }
-        HashMap<String, String[]> edgeElementMap = detectEdgeElement(cube);
-        for (int i = 0; i < edgeElementColors.length; i++) {
-            String key = edgeElementColors[i];
-            String[] currentPosition = edgeElementMap.get(key);
-            String[] orginalPosition = edgeElementPositions[i];
-            for (int j = 0; j < currentPosition.length; j++) {
-                edgeScore += manhattanDistance(currentPosition[j], orginalPosition[j], "edge");
-            }
-        }
-        return Math.max(conerScore, edgeScore);
+        int cornerSteps = estimateCornerSteps(cube);
+        int edgeSteps = estimateEdgeSteps(cube);
+
+        // 老师说：取总和除以8
+        return (cornerSteps + edgeSteps) / 8;
     }
 
-    private static int manhattanDistance(String position, String orginalPosition, String type) {
-        int row = Integer.parseInt(position.split("_")[0]);
-        int column = Integer.parseInt(position.split("_")[1]);
-        int orginalRow = Integer.parseInt(orginalPosition.split("_")[0]);
-        int orginalColumn = Integer.parseInt(orginalPosition.split("_")[1]);
-        int manhattanDistance = Math.abs(row - orginalRow) + Math.abs(column - orginalColumn);
-        if (type == "coner") {
-            return manhattanDistance / 3;
+    // 计算所有角块需要的步数
+    private static int estimateCornerSteps(RubiksCube cube) {
+        int totalSteps = 0;
+        String[][] c = cube.cube;
+
+        // 8个角块，每个角块有3个面
+        Corner[] corners = {
+                new Corner(new int[][] { { 2, 3 }, { 3, 2 }, { 3, 3 } }, new String[] { "O", "G", "W" }), // 左前上
+                new Corner(new int[][] { { 2, 5 }, { 3, 5 }, { 3, 6 } }, new String[] { "O", "W", "B" }), // 右前上
+                new Corner(new int[][] { { 0, 3 }, { 3, 11 }, { 3, 0 } }, new String[] { "O", "Y", "G" }), // 左后上
+                new Corner(new int[][] { { 0, 5 }, { 3, 8 }, { 3, 9 } }, new String[] { "O", "B", "Y" }), // 右后上
+                new Corner(new int[][] { { 5, 2 }, { 5, 3 }, { 6, 3 } }, new String[] { "G", "W", "R" }), // 左前下
+                new Corner(new int[][] { { 5, 5 }, { 5, 6 }, { 6, 5 } }, new String[] { "W", "B", "R" }), // 右前下
+                new Corner(new int[][] { { 5, 11 }, { 5, 0 }, { 8, 3 } }, new String[] { "Y", "G", "R" }), // 左后下
+                new Corner(new int[][] { { 5, 8 }, { 5, 9 }, { 8, 5 } }, new String[] { "B", "Y", "R" }) // 右后下
+        };
+
+        for (Corner corner : corners) {
+            totalSteps += evaluateCorner(c, corner);
+        }
+
+        return totalSteps;
+    }
+
+    // 计算所有边块需要的步数
+    private static int estimateEdgeSteps(RubiksCube cube) {
+        int totalSteps = 0;
+        String[][] c = cube.cube;
+
+        // 12个边块，每个边块有2个面
+        Edge[] edges = {
+                new Edge(new int[][] { { 2, 4 }, { 3, 4 } }, new String[] { "O", "W" }), // 上前
+                new Edge(new int[][] { { 1, 5 }, { 3, 7 } }, new String[] { "O", "B" }), // 上右
+                new Edge(new int[][] { { 0, 4 }, { 3, 10 } }, new String[] { "O", "Y" }), // 上后
+                new Edge(new int[][] { { 1, 3 }, { 3, 1 } }, new String[] { "O", "G" }), // 上左
+                new Edge(new int[][] { { 4, 2 }, { 4, 3 } }, new String[] { "G", "W" }), // 左前
+                new Edge(new int[][] { { 4, 5 }, { 4, 6 } }, new String[] { "W", "B" }), // 右前
+                new Edge(new int[][] { { 4, 11 }, { 4, 0 } }, new String[] { "Y", "G" }), // 左后
+                new Edge(new int[][] { { 4, 8 }, { 4, 9 } }, new String[] { "B", "Y" }), // 右后
+                new Edge(new int[][] { { 5, 4 }, { 6, 4 } }, new String[] { "W", "R" }), // 下前
+                new Edge(new int[][] { { 5, 7 }, { 7, 5 } }, new String[] { "B", "R" }), // 下右
+                new Edge(new int[][] { { 5, 10 }, { 8, 4 } }, new String[] { "Y", "R" }), // 下后
+                new Edge(new int[][] { { 5, 1 }, { 7, 3 } }, new String[] { "G", "R" }) // 下左
+        };
+
+        for (Edge edge : edges) {
+            totalSteps += evaluateEdge(c, edge);
+        }
+
+        return totalSteps;
+    }
+
+    // 评估单个角块需要的步数
+    private static int evaluateCorner(String[][] cube, Corner corner) {
+        // 读取当前位置的3个颜色
+        String[] currentColors = new String[3];
+        for (int i = 0; i < 3; i++) {
+            int row = corner.positions[i][0];
+            int col = corner.positions[i][1];
+            currentColors[i] = cube[row][col];
+        }
+
+        // 检查：位置正确吗？
+        String[] sortedCurrent = Arrays.copyOf(currentColors, 3);
+        String[] sortedTarget = Arrays.copyOf(corner.targetColors, 3);
+        Arrays.sort(sortedCurrent);
+        Arrays.sort(sortedTarget);
+
+        if (!Arrays.equals(sortedCurrent, sortedTarget)) {
+            // 位置不对：至少需要2步移动到正确位置
+            return 5;
+        }
+
+        // 位置对了，检查方向
+        if (Arrays.equals(currentColors, corner.targetColors)) {
+            // 位置和方向都对
+            return 0;
         } else {
-            return manhattanDistance / 2;
+            // 位置对但方向不对：需要3步调整方向（老师说的）
+            return 3;
         }
     }
 
-    // detect each coner element position and color in current cube from
-    // conerElementColors
-    // return a map of position align with conerElementColors
-    private static HashMap<String, String[]> detectConerElement(RubiksCube cube) {
-        // HashMap<String, String> conerElementMap = new HashMap<String, String>();
-        // fetch all coner element align with position
-        HashMap<String, String[]> conerElementMap = new HashMap<String, String[]>();
-        String[] cubeStringRows = cube.toString().split("\n");
-        for (int i = 0; i < conerElementPositions.length; i++) {
-            String[] position = conerElementPositions[i];
-            String conerColorCombination = "";
-            HashMap<String, String> conerElementMapBuffer = new HashMap<String, String>();
-            for (int j = 0; j < position.length; j++) {
-                String pos = position[j];
-                int row = Integer.parseInt(pos.split("_")[0]);
-                int column = Integer.parseInt(pos.split("_")[1]);
-                String color = String.valueOf(cubeStringRows[row].charAt(column));
-                conerElementMapBuffer.put(color, pos);
-                conerColorCombination += color;
-            }
-            // check if current coner match any conerElementColors regredless of order
-            for (String conerColor : conerElementColors) {
-                // sort string alphabetically
-                String colorStringSorted = sortString(conerColor.replaceAll("_", ""));
-                String conerColorCombinationSorted = sortString(conerColorCombination);
-                if (colorStringSorted.equals(conerColorCombinationSorted)) {
-                    String[] conerColorIndexes = conerColor.split("_");
-                    String[] correctColorMapCurrentPosition = { conerElementMapBuffer.get(conerColorIndexes[0]),
-                            conerElementMapBuffer.get(conerColorIndexes[1]),
-                            conerElementMapBuffer.get(conerColorIndexes[2]) };
-                    conerElementMap.put(conerColor, correctColorMapCurrentPosition);
-                    // clean conerElementMapBuffer
-                    conerElementMapBuffer.clear();
-                    conerColorCombination = "";
-                    break;
-                }
-            }
+    // 评估单个边块需要的步数
+    private static int evaluateEdge(String[][] cube, Edge edge) {
+        // 读取当前位置的2个颜色
+        String[] currentColors = new String[2];
+        for (int i = 0; i < 2; i++) {
+            int row = edge.positions[i][0];
+            int col = edge.positions[i][1];
+            currentColors[i] = cube[row][col];
         }
-        return conerElementMap;
+
+        // 检查：位置正确吗？
+        String[] sortedCurrent = Arrays.copyOf(currentColors, 2);
+        String[] sortedTarget = Arrays.copyOf(edge.targetColors, 2);
+        Arrays.sort(sortedCurrent);
+        Arrays.sort(sortedTarget);
+
+        if (!Arrays.equals(sortedCurrent, sortedTarget)) {
+            // 位置不对：至少需要1步移动到正确位置
+            return 4;
+        }
+
+        // 位置对了，检查方向
+        if (Arrays.equals(currentColors, edge.targetColors)) {
+            // 位置和方向都对
+            return 0;
+        } else {
+            // 位置对但方向翻转：需要3步调整方向
+            return 3;
+        }
     }
 
-    private static HashMap<String, String[]> detectEdgeElement(RubiksCube cube) {
-        // HashMap<String, String> conerElementMap = new HashMap<String, String>();
-        // fetch all coner element align with position
-        HashMap<String, String[]> edgeElementMap = new HashMap<String, String[]>();
-        String[] cubeStringRows = cube.toString().split("\n");
-        for (int i = 0; i < edgeElementPositions.length; i++) {
-            String[] position = edgeElementPositions[i];
-            String edgeColorCombination = "";
-            HashMap<String, String> edgeElementMapBuffer = new HashMap<String, String>();
-            for (int j = 0; j < position.length; j++) {
-                String pos = position[j];
-                int row = Integer.parseInt(pos.split("_")[0]);
-                int column = Integer.parseInt(pos.split("_")[1]);
-                String color = String.valueOf(cubeStringRows[row].charAt(column));
-                edgeElementMapBuffer.put(color, pos);
-                edgeColorCombination += color;
-            }
-            // check if current coner match any conerElementColors regredless of order
-            for (String edgeColor : edgeElementColors) {
-                // sort string alphabetically
-                String colorStringSorted = sortString(edgeColor.replaceAll("_", ""));
-                String edgeColorCombinationSorted = sortString(edgeColorCombination);
-                if (colorStringSorted.equals(edgeColorCombinationSorted)) {
-                    String[] edgeColorIndexes = edgeColor.split("_");
-                    String[] correctColorMapCurrentPosition = { edgeElementMapBuffer.get(edgeColorIndexes[0]),
-                            edgeElementMapBuffer.get(edgeColorIndexes[1]) };
-                    edgeElementMap.put(edgeColor, correctColorMapCurrentPosition);
-                    // clean conerElementMapBuffer
-                    edgeElementMapBuffer.clear();
-                    edgeColorCombination = "";
-                    break;
-                }
-            }
+    // 辅助类：角块
+    static class Corner {
+        int[][] positions; // 3个位置 [row, col]
+        String[] targetColors; // 目标颜色顺序
+
+        Corner(int[][] positions, String[] targetColors) {
+            this.positions = positions;
+            this.targetColors = targetColors;
         }
-        return edgeElementMap;
+    }
+
+    // 辅助类：边块
+    static class Edge {
+        int[][] positions; // 2个位置 [row, col]
+        String[] targetColors; // 目标颜色顺序
+
+        Edge(int[][] positions, String[] targetColors) {
+            this.positions = positions;
+            this.targetColors = targetColors;
+        }
     }
 }
-
-// ================
-
-// public class CubeEstimate {
-// public static int estimate(RubiksCube cube) {
-// // 8 is form research
-// //
-// https://stackoverflow.com/questions/60130124/heuristic-function-for-rubiks-cube-in-a-algorithm-artificial-intelligence
-// //
-// [https://www.cs.princeton.edu/courses/archive/fall06/cos402/papers/korfrubik.pdf]
-// if (cube.isSolved()) {
-// return 0;
-// }
-// int misplacedCorners = countMisplacedCorners(cube);
-// int misplacedEdges = countMisplacedEdges(cube);
-// int misplacedCenters = countMisplacedCenters(cube);
-// return (misplacedCorners * 2 + misplacedEdges * 3 + misplacedCenters) / 3;
-// }
-
-// private static int countMisplacedCenters(RubiksCube cube) {
-// int count = 0;
-// // check the center of the face is the correct element
-// String[] centerElements = new String[] { "1_5", "4_1", "4_5", "4_8", "4_11",
-// "7_5" };
-// for (String centerElement : centerElements) {
-// int row = Integer.parseInt(centerElement.split("_")[0]);
-// int column = Integer.parseInt(centerElement.split("_")[1]);
-// if (!cube.cube[row][column].equals(RubiksCube.solvedCube.cube[row][column]))
-// {
-// count++;
-// }
-// }
-// return count;
-// }
-
-// private static int countMisplacedCorners(RubiksCube cube) {
-// int count = 0;
-// for (int i = 0; i < cube.cube.length; i++) {
-// for (int j = 0; j < cube.cube[i].length; j++) {
-// if (cube.cube[i][j] == null || cube.cube[i][j].isEmpty()) {
-// continue;
-// }
-// if (!cube.cube[i][j].equals(RubiksCube.solvedCube.cube[i][j])) {
-// count++;
-// }
-// }
-// }
-// return count;
-// }
-
-// private static int countMisplacedEdges(RubiksCube cube) {
-// int count = 0;
-// // only count the centers that are not in the correct position
-// for (int i = 0; i < 3; i++) {
-// for (int j = 3; j < 6; j++) {
-// if (!cube.cube[i][j].equals(RubiksCube.solvedCube.cube[i][j])) {
-// count++;
-// }
-// }
-// }
-// return count;
-// }
-// }
-
-// package rubikscube;
-
-// public class CubeEstimate {
-// private static final int[][] CENTERS = {
-// { 1, 5 }, { 4, 1 }, { 4, 5 }, { 4, 8 }, { 4, 11 }, { 7, 5 }
-// };
-
-// private static final int[][] CORNERS = {
-// { 3, 3 }, { 3, 5 }, { 3, 9 }, { 3, 11 },
-// { 5, 3 }, { 5, 5 }, { 5, 9 }, { 5, 11 },
-// };
-
-// private static final int[][] EDGES = {
-// { 0, 3 }, { 2, 5 }, { 3, 0 }, { 5, 2 }, { 3, 3 }, { 5, 5 }, { 3, 6 }, { 5, 8
-// }, { 3, 9 }, { 5, 11 },
-// { 6, 3 }, { 8, 5 }
-// };
-
-// public static int estimate(RubiksCube cube) {
-// if (cube.isSolved())
-// return 0;
-
-// int hCenter = countMisplaced(cube, CENTERS) * 1;
-// int hEdge = countMisplaced(cube, EDGES) * 2;
-// int hCorner = countMisplaced(cube, CORNERS) * 3;
-// int h = (hCorner + hEdge + hCenter) / 3;
-// return h;
-// }
-
-// private static int countMisplaced(RubiksCube cube, int[][] positions) {
-// int count = 0;
-// for (int[] pos : positions) {
-// int r = pos[0];
-// int c = pos[1];
-// String cur = cube.cube[r][c];
-// String solved = RubiksCube.solvedCube.cube[r][c];
-// if (!cur.equals(solved)) {
-// count++;
-// }
-// }
-// return count;
-// }
-// }

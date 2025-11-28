@@ -1,1 +1,1 @@
-javac -d out src/rubikscube/*.java     
+javac -encoding UTF-8 -d out src/rubikscube/*.java     

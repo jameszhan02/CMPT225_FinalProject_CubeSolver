@@ -16,19 +16,12 @@ public class Solver {
 
 		private int getDepth(String solution) {
 			int depth = 0;
-			for (int i = 0; i < solution.length(); i++) {
-				// if i + 1 and i + 2 out of range, then it is 1 move
-				if (i + 1 >= solution.length() || i + 2 >= solution.length()) {
-					depth++;
-					continue;
-				}
-				if (solution.charAt(i) == solution.charAt(i + 1) && solution.charAt(i) == solution.charAt(i + 2)) {
-					depth++;
-					i += 2;
-				} else {
-					depth++;
-				}
+			if (solution == null || solution.isEmpty()) {
+				return depth;
 			}
+			// remove the first |
+			String[] solutionMoves = solution.substring(1).split("\\|");
+			depth = solutionMoves.length;
 			return depth;
 		}
 
@@ -37,7 +30,10 @@ public class Solver {
 			this.solution = solution;
 			// if 3 same move in a row, then it is 1 move
 			this.g = getDepth(solution); // current depth
-			this.h = CubeEstimate.estimate(cube); // heuristic estimate
+
+			// 使用PDB增强的启发式
+			this.h = PatternDatabase.estimateWithPDB(cube);
+			// this.h = CubeEstimate.estimate(cube); // heuristic estimate
 		}
 
 		int f() {
@@ -46,6 +42,11 @@ public class Solver {
 	}
 
 	public static void main(String[] args) {
+		long startTime = System.currentTimeMillis();
+		System.out.println("Initializing Pattern Database...");
+		PatternDatabase.initializeCornerPDB();
+		System.out.println("Pattern Database initialized");
+		System.out.println("--------------------------------");
 		if (args.length < 2) {
 			System.out.println("File names are not specified");
 			System.out.println(
@@ -63,7 +64,6 @@ public class Solver {
 		String outputFileName = args[1];
 		Integer steps = 0;
 		try {
-			System.out.println("Reading file: " + inputFileName);
 			RubiksCube cube = new RubiksCube(inputFileName);
 			State initialState = new State(cube, "");
 			// insert the initial state for start the search
@@ -71,13 +71,14 @@ public class Solver {
 			visited.put(cube.toString(), 0);
 			while (!openSet.isEmpty()) {
 				steps++;
-				if (steps > 25000) {
+				if (steps > 30000) {
 					// accroding to the assignment, all cube could be solved in 20 steps | but since
 					// we only allow one direction move , 500 still will be far more than enough
 					System.out.println("Steps limit reached");
 					break;
 				}
 				State current = openSet.poll(); // get the state with the lowest f(n) and remove it from the openSet
+
 				if (steps % 100 == 0) {
 					System.out.println("Steps: " + steps + " Queue size: " + openSet.size());
 					System.out.println("Current solution: " + current.solution);
@@ -87,7 +88,9 @@ public class Solver {
 				}
 				if (current.cube.isSolved()) {
 					solution = current.solution;
-					System.out.println("Solution found: " + solution + " in " + steps + " steps");
+					// solution string without |
+					String formatedSolution = solution.replaceAll("\\|", "");
+					System.out.println("Solution found: " + formatedSolution + " in " + steps + " steps");
 					break;
 				}
 
@@ -103,14 +106,24 @@ public class Solver {
 						"RRR", "UUU", "DDD", "BBB" };
 				for (int i = 0; i < moves.length; i++) {
 					// bypass 4 same move in a row
-					String newSolution = current.solution + moves[i];
-					String fourSameMove = String.valueOf(moves[i].charAt(0)) + String.valueOf(moves[i].charAt(0))
-							+ String.valueOf(moves[i].charAt(0))
-							+ moves[i].charAt(0);
-					if (newSolution.length() > 4 && newSolution.substring(newSolution.length() - 4)
-							.equals(fourSameMove)) {
-						continue;
+					// for example if previous move is F, then next move can not be FFF.
+					// if previous move is FFF, then next move can not be F.
+					// if previous move is FF, then next move can not be FF. etc.
+					String previousMove = "";
+					if (current.solution != null && !current.solution.isEmpty()) {
+						String[] solutionMoves = current.solution.split("\\|");
+						previousMove = solutionMoves[solutionMoves.length - 1];
 					}
+					// check all by pass cases
+					if (!previousMove.isEmpty() && previousMove != null) {
+						String currentTwoMoves = previousMove + moves[i];
+						// if currentTwoMoves is same letter 4 times, then skip
+						if (currentTwoMoves.equals(String.valueOf(currentTwoMoves.charAt(0)).repeat(4))) {
+							continue;
+						}
+					}
+
+					String newSolution = current.solution + "|" + moves[i];
 					RubiksCube clone = current.cube.deepClone();
 					clone.applyMoves(moves[i]);
 					String nextState = clone.toString();
@@ -125,10 +138,8 @@ public class Solver {
 					}
 				}
 			}
-			System.out.println("Solution: " + solution);
-		} catch (
-
-		IOException e) {
+			System.out.println("Orginal Solution: " + solution);
+		} catch (IOException e) {
 			System.out.println("Error reading file");
 			return;
 		} catch (IncorrectFormatException e) {
@@ -138,5 +149,8 @@ public class Solver {
 		// solve...
 		// File output = new File(args[1]);
 		System.out.println("Solving... -> " + outputFileName);
+		long endTime = System.currentTimeMillis();
+		// convert to seconds
+		System.out.println("Time taken: " + (endTime - startTime) + " milliseconds");
 	}
 }
