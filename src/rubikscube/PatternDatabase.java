@@ -91,7 +91,7 @@ public class PatternDatabase {
 
         // 【关键】不要除以4！直接使用totalSteps
         // 因为魔方的复杂度是叠加的，不是平均的
-        int baseEstimate = totalSteps / 2; // 只除以2，保留更多信息
+        int baseEstimate = totalSteps / 4; // 只除以2，保留更多信息
 
         // 额外惩罚：位置错误比旋转错误更严重
         if (misplacedCount > 0) {
@@ -117,26 +117,27 @@ public class PatternDatabase {
 
         // 情况1: 颜色集合不匹配 - 角块在错误的位置
         if (!currentColors.equals(targetColors)) {
-            // 进一步细分：检查有多少颜色是匹配的
-            int matchingColors = 0;
-            for (String color : targetColors) {
-                if (currentColors.contains(color)) {
-                    matchingColors++;
-                }
-            }
+            return 2;
+            // // 进一步细分：检查有多少颜色是匹配的
+            // int matchingColors = 0;
+            // for (String color : targetColors) {
+            // if (currentColors.contains(color)) {
+            // matchingColors++;
+            // }
+            // }
 
-            // 0个匹配: 角块完全在错误的位置，需要更多步骤
-            if (matchingColors == 0) {
-                return 6; // 完全错误
-            }
-            // 1个匹配: 部分相关
-            else if (matchingColors == 1) {
-                return 5;
-            }
-            // 2个匹配: 很接近但位置错误
-            else {
-                return 4;
-            }
+            // // 0个匹配: 角块完全在错误的位置，需要更多步骤
+            // if (matchingColors == 0) {
+            // return 6; // 完全错误
+            // }
+            // // 1个匹配: 部分相关
+            // else if (matchingColors == 1) {
+            // return 5;
+            // }
+            // // 2个匹配: 很接近但位置错误
+            // else {
+            // return 4;
+            // }
         }
 
         // 情况2: 颜色集合匹配，检查位置和旋转
@@ -161,7 +162,7 @@ public class PatternDatabase {
             return 2;
         }
 
-        return 3; // 其他情况
+        return 1; // 其他情况
     }
 
     private static int getCornerRotationDistance(String[] current, String[] target) {
@@ -216,8 +217,7 @@ public class PatternDatabase {
             }
         }
 
-        // 【关键】不要除以4！直接使用totalSteps
-        int baseEstimate = totalSteps / 2; // 只除以2
+        int baseEstimate = totalSteps / 4; // 只除以2
 
         // 额外惩罚
         if (misplacedCount > 0) {
@@ -242,22 +242,23 @@ public class PatternDatabase {
 
         // 情况1: 颜色集合不匹配 - 边块在错误的位置
         if (!currentColors.equals(targetColors)) {
-            // 检查有多少颜色匹配
-            int matchingColors = 0;
-            for (String color : targetColors) {
-                if (currentColors.contains(color)) {
-                    matchingColors++;
-                }
-            }
+            return 2; // 保守估计，至少需要2步
+            // // 检查有多少颜色匹配
+            // int matchingColors = 0;
+            // for (String color : targetColors) {
+            // if (currentColors.contains(color)) {
+            // matchingColors++;
+            // }
+            // }
 
-            // 0个匹配: 边块完全在错误的位置
-            if (matchingColors == 0) {
-                return 5;
-            }
-            // 1个匹配: 有一个颜色对了
-            else {
-                return 4;
-            }
+            // // 0个匹配: 边块完全在错误的位置
+            // if (matchingColors == 0) {
+            // return 5;
+            // }
+            // // 1个匹配: 有一个颜色对了
+            // else {
+            // return 4;
+            // }
         }
 
         // 情况2: 颜色集合匹配，检查是否正确放置
@@ -267,7 +268,7 @@ public class PatternDatabase {
 
         // 情况3: 位置正确但翻转了
         if (c0.equals(edge.colors[1]) && c1.equals(edge.colors[0])) {
-            return 2; // 只需要翻转
+            return 1; // 只需要翻转
         }
 
         return 3; // 其他情况（理论上不应该到达）
@@ -434,7 +435,7 @@ public class PatternDatabase {
         queue.add(new PDBState(solved, 0, ""));
         cornerPDB.put(pattern, 0);
 
-        int maxDepth = 5;
+        int maxDepth = 2;
 
         while (!queue.isEmpty()) {
             PDBState curr = queue.poll();
@@ -478,7 +479,7 @@ public class PatternDatabase {
         queue.add(new PDBState(solved, 0, ""));
         edgePDB.put(pattern, 0);
 
-        int maxDepth = 5;
+        int maxDepth = 2;
 
         while (!queue.isEmpty()) {
             PDBState curr = queue.poll();
