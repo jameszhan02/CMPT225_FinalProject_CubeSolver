@@ -31,9 +31,8 @@ public class Solver {
 			// if 3 same move in a row, then it is 1 move
 			this.g = getDepth(solution); // current depth
 
-			// 使用PDB增强的启发式
-			this.h = PatternDatabase.estimateWithPDB(cube);
-			// this.h = CubeEstimate.estimate(cube); // heuristic estimate
+			// 使用启发函数 (包含PDB查询)
+			this.h = CubeEstimate.estimate(cube);
 		}
 
 		int f() {
@@ -50,7 +49,7 @@ public class Solver {
 	public static void main(String[] args) {
 		long startTime = System.currentTimeMillis();
 		System.out.println("Initializing Pattern Database...");
-		PatternDatabase.initializeBothPDB();
+		PatternDatabase.initialize();
 		System.out.println("Pattern Database initialized");
 		System.out.println("--------------------------------");
 		if (args.length < 2) {
@@ -77,7 +76,7 @@ public class Solver {
 			visited.put(cube.toString(), 0);
 			while (!openSet.isEmpty()) {
 				steps++;
-				if (steps > 40000) {
+				if (steps > 7000) {
 					System.out.println("Steps limit reached");
 					break;
 				}
@@ -98,6 +97,28 @@ public class Solver {
 					System.out.println("Current g: " + current.g);
 					System.out.println("Current h: " + current.h);
 					System.out.println("Current f: " + current.f());
+				}
+
+				// 【优化】检查是否在 Pattern Database 中
+				PatternDatabase.PDBEntry pdbEntry = PatternDatabase.lookup(current.cube);
+				if (pdbEntry != null) {
+					// 在 PDB 中找到！直接拼接路径
+					if (pdbEntry.path.isEmpty()) {
+						solution = current.solution; // 已经是 solved state
+					} else {
+						// 拼接 PDB 中的路径
+						String[] pdbMoves = pdbEntry.path.split("\\|");
+						StringBuilder sb = new StringBuilder(current.solution);
+						for (String move : pdbMoves) {
+							if (!move.isEmpty()) {
+								sb.append("|").append(move);
+							}
+						}
+						solution = sb.toString();
+					}
+					String formatedSolution = solution.replaceAll("\\|", "");
+					System.out.println("Solution found: " + formatedSolution + " in " + steps + " steps");
+					break;
 				}
 
 				if (current.cube.isSolved()) {
