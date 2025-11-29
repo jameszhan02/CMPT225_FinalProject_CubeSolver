@@ -77,20 +77,20 @@ public class Solver {
 			visited.put(cube.toString(), 0);
 			while (!openSet.isEmpty()) {
 				steps++;
-				if (openSet.peek().g > 20) {
-					// accroding to the assignment, all cube could be solved in 20 steps | but since
-					// we only allow one direction move , 500 still will be far more than enough
-					System.out.println("g value limit reached");
-					break;
-				}
-				// steps > 30000 true
 				if (steps > 40000) {
-					// accroding to the assignment, all cube could be solved in 20 steps | but since
-					// we only allow one direction move , 500 still will be far more than enough
 					System.out.println("Steps limit reached");
 					break;
 				}
+
 				State current = openSet.poll(); // get the state with the lowest f(n) and remove it from the openSet
+				String currentStateStr = current.cube.toString();
+
+				// 【优化】提前检查：如果这个状态已经被更短的路径访问过，跳过
+				// 这避免了处理队列中的重复状态
+				if (visited.containsKey(currentStateStr) &&
+						visited.get(currentStateStr) < current.g) {
+					continue;
+				}
 
 				if (steps % 100 == 0) {
 					System.out.println("Steps: " + steps + " Queue size: " + openSet.size());
@@ -99,6 +99,7 @@ public class Solver {
 					System.out.println("Current h: " + current.h);
 					System.out.println("Current f: " + current.f());
 				}
+
 				if (current.cube.isSolved()) {
 					solution = current.solution;
 					// solution string without |
@@ -107,13 +108,8 @@ public class Solver {
 					break;
 				}
 
-				String currentStateStr = current.cube.toString();
-				// current state is already visited and the solution is shorter than the current
-				// solution then skip
-				if (visited.containsKey(currentStateStr) &&
-						visited.get(currentStateStr) < current.g) {
-					continue;
-				}
+				// 【关键优化】标记当前状态为已扩展，防止重复扩展
+				visited.put(currentStateStr, current.g);
 				// create 6 deep clone of the cube
 				String[] moves = { "F", "B", "L", "R", "U", "D", "FF", "BB", "LL", "RR", "UU", "DD", "FFF", "LLL",
 						"RRR", "UUU", "DDD", "BBB" };

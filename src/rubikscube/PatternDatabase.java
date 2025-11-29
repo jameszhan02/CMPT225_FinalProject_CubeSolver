@@ -43,7 +43,18 @@ public class PatternDatabase {
                 ? lookupEdge(cube)
                 : estimateEdges(cube);
 
-        return Math.max(cornerEstimate, edgeEstimate) + (cornerEstimate + edgeEstimate) / 4;
+        // 【关键改进】不要过度除法！使用更激进的估计
+        // 角块和边块是独立的，应该取最大值而不是平均
+        int baseEstimate = Math.max(cornerEstimate, edgeEstimate);
+
+        // 如果两者都很高，说明魔方很乱，需要额外步骤
+        if (cornerEstimate >= 8 && edgeEstimate >= 8) {
+            baseEstimate += Math.min(cornerEstimate, edgeEstimate) / 3;
+        } else if (cornerEstimate >= 5 && edgeEstimate >= 5) {
+            baseEstimate += Math.min(cornerEstimate, edgeEstimate) / 4;
+        }
+
+        return baseEstimate;
     }
 
     // ========================================
@@ -53,6 +64,8 @@ public class PatternDatabase {
     private static int estimateCorners(RubiksCube cube) {
         String[][] c = cube.cube;
         int totalSteps = 0;
+        int misplacedCount = 0;
+        int twistedCount = 0;
 
         CornerDef[] corners = {
                 new CornerDef(new int[][] { { 2, 3 }, { 3, 2 }, { 3, 3 } }, new String[] { "O", "G", "W" }),
@@ -66,10 +79,32 @@ public class PatternDatabase {
         };
 
         for (CornerDef corner : corners) {
-            totalSteps += evaluateCorner(c, corner);
+            int score = evaluateCorner(c, corner);
+            totalSteps += score;
+
+            if (score >= 4) {
+                misplacedCount++; // 位置错误的角块
+            } else if (score > 0) {
+                twistedCount++; // 只是旋转错误的角块
+            }
         }
 
-        return totalSteps / 8;
+        // 【关键】不要除以4！直接使用totalSteps
+        // 因为魔方的复杂度是叠加的，不是平均的
+        int baseEstimate = totalSteps / 2; // 只除以2，保留更多信息
+
+        // 额外惩罚：位置错误比旋转错误更严重
+        if (misplacedCount > 0) {
+            baseEstimate += misplacedCount; // 每个错位的角块+1步
+        }
+
+        if (twistedCount >= 4) {
+            baseEstimate += 2;
+        } else if (twistedCount >= 2) {
+            baseEstimate += 1;
+        }
+
+        return baseEstimate;
     }
 
     private static int evaluateCorner(String[][] c, CornerDef corner) {
@@ -80,19 +115,71 @@ public class PatternDatabase {
         Set<String> currentColors = new HashSet<>(Arrays.asList(c0, c1, c2));
         Set<String> targetColors = new HashSet<>(Arrays.asList(corner.colors));
 
+        // 情况1: 颜色集合不匹配 - 角块在错误的位置
         if (!currentColors.equals(targetColors)) {
-            return 5;
+            // 进一步细分：检查有多少颜色是匹配的
+            int matchingColors = 0;
+            for (String color : targetColors) {
+                if (currentColors.contains(color)) {
+                    matchingColors++;
+                }
+            }
+
+            // 0个匹配: 角块完全在错误的位置，需要更多步骤
+            if (matchingColors == 0) {
+                return 6; // 完全错误
+            }
+            // 1个匹配: 部分相关
+            else if (matchingColors == 1) {
+                return 5;
+            }
+            // 2个匹配: 很接近但位置错误
+            else {
+                return 4;
+            }
         }
 
+        // 情况2: 颜色集合匹配，检查位置和旋转
         if (c0.equals(corner.colors[0]) &&
                 c1.equals(corner.colors[1]) &&
                 c2.equals(corner.colors[2])) {
-            return 0;
+            return 0; // 完全正确
         }
 
-        return 3;
+        // 情况3: 位置正确但旋转错误
+        // 检查旋转程度
+        int rotationDistance = getCornerRotationDistance(
+                new String[] { c0, c1, c2 },
+                corner.colors);
+
+        // 旋转120度 (顺时针一次)
+        if (rotationDistance == 1) {
+            return 2;
+        }
+        // 旋转240度 (顺时针两次)
+        else if (rotationDistance == 2) {
+            return 2;
+        }
+
+        return 3; // 其他情况
     }
 
+    private static int getCornerRotationDistance(String[] current, String[] target) {
+        // 尝试旋转0次、1次、2次，看哪个匹配
+        for (int rotations = 0; rotations < 3; rotations++) {
+            boolean matches = true;
+            for (int i = 0; i < 3; i++) {
+                if (!current[(i + rotations) % 3].equals(target[i])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return rotations;
+            }
+        }
+        return 3; // 不应该到达这里
+    }
     // ========================================
     // 【核心】精确评估边块
     // ========================================
@@ -100,6 +187,8 @@ public class PatternDatabase {
     private static int estimateEdges(RubiksCube cube) {
         String[][] c = cube.cube;
         int totalSteps = 0;
+        int misplacedCount = 0;
+        int flippedCount = 0;
 
         EdgeDef[] edges = {
                 new EdgeDef(new int[][] { { 2, 4 }, { 3, 4 } }, new String[] { "O", "W" }),
@@ -117,10 +206,31 @@ public class PatternDatabase {
         };
 
         for (EdgeDef edge : edges) {
-            totalSteps += evaluateEdge(c, edge);
+            int score = evaluateEdge(c, edge);
+            totalSteps += score;
+
+            if (score >= 4) {
+                misplacedCount++; // 位置错误的边块
+            } else if (score == 2) {
+                flippedCount++; // 只是翻转的边块
+            }
         }
 
-        return totalSteps / 8;
+        // 【关键】不要除以4！直接使用totalSteps
+        int baseEstimate = totalSteps / 2; // 只除以2
+
+        // 额外惩罚
+        if (misplacedCount > 0) {
+            baseEstimate += misplacedCount / 2; // 错位的边块
+        }
+
+        if (flippedCount >= 4) {
+            baseEstimate += 2;
+        } else if (flippedCount >= 2) {
+            baseEstimate += 1;
+        }
+
+        return baseEstimate;
     }
 
     private static int evaluateEdge(String[][] c, EdgeDef edge) {
@@ -130,15 +240,37 @@ public class PatternDatabase {
         Set<String> currentColors = new HashSet<>(Arrays.asList(c0, c1));
         Set<String> targetColors = new HashSet<>(Arrays.asList(edge.colors));
 
+        // 情况1: 颜色集合不匹配 - 边块在错误的位置
         if (!currentColors.equals(targetColors)) {
-            return 4;
+            // 检查有多少颜色匹配
+            int matchingColors = 0;
+            for (String color : targetColors) {
+                if (currentColors.contains(color)) {
+                    matchingColors++;
+                }
+            }
+
+            // 0个匹配: 边块完全在错误的位置
+            if (matchingColors == 0) {
+                return 5;
+            }
+            // 1个匹配: 有一个颜色对了
+            else {
+                return 4;
+            }
         }
 
+        // 情况2: 颜色集合匹配，检查是否正确放置
         if (c0.equals(edge.colors[0]) && c1.equals(edge.colors[1])) {
-            return 0;
+            return 0; // 完全正确
         }
 
-        return 3;
+        // 情况3: 位置正确但翻转了
+        if (c0.equals(edge.colors[1]) && c1.equals(edge.colors[0])) {
+            return 2; // 只需要翻转
+        }
+
+        return 3; // 其他情况（理论上不应该到达）
     }
 
     private static class CornerDef {
